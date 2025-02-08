@@ -111,8 +111,18 @@ const mod = {
 
 			try {
 
-				const rows = db.prepare("SELECT id, sender, subject FROM mail WHERE recipient = @recipient ORDER BY id DESC LIMIT @mailCount OFFSET (@page-1)*@mailCount").all({ recipient: json.addr, page: json.page, mailCount: config.getConfig('MailCountPerPage') });
-				res.json(rows);
+				const perPage = Number(config.getConfig('MailCountPerPage'));
+				const params = {
+					recipient: json.addr,
+					page: json.page,
+					mailCount: perPage
+				};
+				const rows = db.prepare("SELECT id, sender, subject FROM mail WHERE recipient = @recipient ORDER BY id DESC LIMIT @mailCount OFFSET (@page-1)*@mailCount").all(params);
+				res.json({
+					data: rows,
+					nextId: (rows.length == 0 || rows.length < perPage) ? null : json.page + 1,
+					previousId: json.page > 1 ? json.page - 1 : null,
+				});
 
 			} catch (err) {
 

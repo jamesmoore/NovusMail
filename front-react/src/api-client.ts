@@ -1,6 +1,6 @@
 import { AddressesResponse } from "./models/addresses-response";
-import { Mail } from "./models/mail";
 import { MailMessage } from "./models/mail-message";
+import { MailResponse } from "./models/mail-response";
 
 const defaultHeaders = {
     'Content-Type': 'application/json',
@@ -57,7 +57,7 @@ const fetchMails = async (selectedAddress: string, page: number) => {
         ),
         headers: defaultHeaders,
     });
-    return response.json() as Promise<Mail[]>;
+    return response.json() as Promise<MailResponse>;
 };
 
 const fetchMail = async (id: string) => {

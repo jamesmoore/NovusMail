@@ -1,11 +1,11 @@
-import { useState, useEffect, useContext, ChangeEvent } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { isEnterKeyUp, isLeftMouseClick } from './Events';
 import { useNavigate } from 'react-router-dom';
 import AddressContext from './AddressContext';
-import { AppBar, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Divider, Drawer, Fab, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Pagination, Paper, Toolbar, Tooltip, Typography } from '@mui/material';
+import { AppBar, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Divider, Drawer, Fab, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Paper, Toolbar, Tooltip, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import ContentCopy from '@mui/icons-material/ContentCopy';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { fetchAddress, fetchDomain, fetchMails, deleteMail } from './api-client';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -13,6 +13,8 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import MailIcon from '@mui/icons-material/Mail';
 import MenuIcon from '@mui/icons-material/Menu';
 import DraftsIcon from '@mui/icons-material/Drafts';
+import { useInView } from 'react-intersection-observer';
+import { MailResponse } from './models/mail-response';
 
 const handleCopy = async (text: string) => {
   try {
@@ -23,14 +25,12 @@ const handleCopy = async (text: string) => {
 };
 
 function Mailbox() {
-  const [error, setError] = useState<string | null>(null);
   const { selectedAddress, setSelectedAddress } = useContext(AddressContext);
-  const [page, setPage] = useState(1);
-  const [pageCount, setPageCount] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteItemKey, setDeleteItemKey] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const { ref, inView } = useInView();
 
   const drawerWidth = 240;
 
@@ -47,6 +47,7 @@ function Mailbox() {
   };
 
   const handleDrawerToggle = () => {
+    console.log(isClosing);
     if (!isClosing) {
       setMobileOpen(!mobileOpen);
     }
@@ -92,10 +93,10 @@ function Mailbox() {
     deleteMail(deleteItemKey!)
       .then(() => {
         setDeleteConfirm(false);
-        refreshMails();
+        refetch();
       })
       .catch(error => {
-        setError('Failed to delete mail ' + error);
+        console.error('Failed to delete mail ' + error);
       });
   }
 
@@ -103,9 +104,6 @@ function Mailbox() {
     setDeleteConfirm(false);
   }
 
-  function handlePageChange(_: ChangeEvent<unknown>, page: number): void {
-    setPage(page);
-  }
 
   const { data: domainName } = useQuery(
     {
@@ -133,28 +131,46 @@ function Mailbox() {
     [addressesResponse]
   );
 
-  useEffect(() => {
-    setPage(1);
-  }, [selectedAddress]);
+  const {
+    status,
+    data: mails,
+    error,
+    isFetching,
+    isFetchingNextPage,
+    isFetchingPreviousPage,
+    fetchNextPage,
+    // fetchPreviousPage,
+    hasNextPage,
+    hasPreviousPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['mail', selectedAddress],
+    queryFn: async ({
+      pageParam,
+    }): Promise<MailResponse> => {
+      if (!selectedAddress) {
+        return new Promise(() => { });
+      }
+      return fetchMails(selectedAddress, pageParam);
+    },
+    initialPageParam: 1,
+    getPreviousPageParam: (firstPage) => firstPage.previousId,
+    getNextPageParam: (lastPage) => lastPage.nextId,
+    // refetchInterval: addressesResponse ? addressesResponse?.refreshInterval * 1000 : false,
+  });
 
-  const { data: mails, isLoading: mailsLoading, refetch: refreshMails } = useQuery(
-    {
-      queryKey: ["mail", selectedAddress, page],
-      queryFn: () => fetchMails(selectedAddress, page),
-      refetchInterval: addressesResponse ? addressesResponse?.refreshInterval * 1000 : false,
+  useEffect(() => {
+    if (inView) {
+      fetchNextPage()
     }
-  );
-
-  useEffect(() => {
-    setPageCount(mails ? mails.length > 0 ? page + 1 : page : 1);
-  }, [mails]);
+  }, [fetchNextPage, inView])
 
   if (addressIsLoading) {
     return <div>Loading...</div>;
   }
 
   if (error) {
-    return <div className="error">{error}</div>;
+    return <div className="error">{error.message}</div>;
   }
 
   const drawer = (
@@ -182,6 +198,14 @@ function Mailbox() {
         ))}
       </List>
       <Divider />
+      <div>
+        Status: {status} <br />
+        IsFetchingPreviousPage: {isFetchingPreviousPage} <br />
+        hasPreviousPage: {hasPreviousPage} <br />
+        inView: {inView ? "true" : "false"}<br />
+        isClosing: {isClosing ? "true" : "false"}<br />
+        mobileOpen: {mobileOpen ? "true" : "false"}<br />
+      </div>
     </div>
   );
 
@@ -255,46 +279,71 @@ function Mailbox() {
           width: {
             xs: "100%",
             sm: `calc(100% - ${drawerWidth}px)`
-          }
+          },
         }}
       >
 
         <Toolbar />
         <Grid flex="1 0 auto" paddingLeft={1} paddingRight={1}>
-          {mailsLoading && (<>Loading...</>)}
-          {mails && mails.map((mail) => (
-            <Paper sx={{ mt: 1, mb: 1, "&:hover": { cursor: "pointer" } }} elevation={3} tabIndex={1} role="button" onKeyUp={(e) => mailKeyUp(e, mail.id)} onClick={(e) => mailClicked(e, mail.id)}>
-              <Grid container sx={{ ml: 1 }}>
-                <Grid container size={11} key={mail.id} alignItems='center'>
-                  <Grid size={{ xs: 12, md: 4 }} >
-                    {mail.sender}
+          {isFetching && (<>Loading...</>)}
+          {mails && mails.pages && mails.pages.map((mailPage) => {
+            return mailPage.data.map((mail) =>
+            (
+              <Paper sx={{ mt: 1, mb: 1, "&:hover": { cursor: "pointer" } }}
+                elevation={3}
+                tabIndex={1}
+                role="button"
+                onKeyUp={(e) => mailKeyUp(e, mail.id)}
+                onClick={(e) => mailClicked(e, mail.id)}
+              >
+                <Grid container sx={{ ml: 1 }}>
+                  <Grid container size={11} key={mail.id} alignItems='center'>
+                    <Grid size={{ xs: 12, md: 4 }} >
+                      {mail.sender}
+                    </Grid>
+                    <Grid
+                      size={{ md: 8 }}
+                      sx={{
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}>
+                      {mail.subject}
+                    </Grid>
                   </Grid>
-                  <Grid
-                    size={{ md: 8 }}
-                    sx={{
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}>
-                    {mail.subject}
+                  <Grid container size={1} justifyContent='right' alignItems='center'>
+                    <IconButton color={"error"} aria-label="delete" onKeyUp={(e) => deleteKeyUp(e, mail.id)} onClick={(e) => deleteClicked(e, mail.id)} >
+                      <DeleteIcon />
+                    </IconButton>
                   </Grid>
                 </Grid>
-                <Grid container size={1} justifyContent='right' alignItems='center'>
-                  <IconButton color="error" aria-label="delete" onKeyUp={(e) => deleteKeyUp(e, mail.id)} onClick={(e) => deleteClicked(e, mail.id)} >
-                    <DeleteIcon />
-                  </IconButton>
-                </Grid>
-              </Grid>
-            </Paper>
-          ))
+              </Paper>
+            ))
           }
+          )
+          }
+
+          <Box flex="0 0 auto" display="flex" justifyContent={'center'}>
+            <button
+              ref={ref}
+              onClick={() => fetchNextPage()}
+              disabled={!hasNextPage || isFetchingNextPage}
+            >
+              {isFetchingNextPage
+                ? 'Loading more...'
+                : hasNextPage
+                  ? 'Load Newer'
+                  : 'Nothing more to load'}
+            </button>
+          </Box>
+          <Box flex="0 0 auto" display="flex" justifyContent={'center'}>
+            {isFetching && !isFetchingNextPage
+              ? 'Background Updating...'
+              : null}
+          </Box>
+
         </Grid>
 
-        <Paper sx={{ p: 1, flex: "0 0 auto" }} elevation={3}>
-          <Grid container direction="row" justifyContent="center" alignItems="center">
-            <Pagination count={pageCount} page={page} onChange={handlePageChange} />
-          </Grid>
-        </Paper>
 
       </Box >
 
