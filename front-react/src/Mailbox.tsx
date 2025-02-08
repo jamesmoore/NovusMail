@@ -8,6 +8,7 @@ import ContentCopy from '@mui/icons-material/ContentCopy';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAddress, fetchDomain, fetchMails, deleteMail } from './api-client';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SettingsIcon from '@mui/icons-material/Settings';
 
 import MailIcon from '@mui/icons-material/Mail';
@@ -29,6 +30,7 @@ function Mailbox() {
   const [pageCount, setPageCount] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteItemKey, setDeleteItemKey] = useState<string | null>(null);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
   const navigate = useNavigate();
 
 
@@ -261,7 +263,15 @@ function Mailbox() {
         <Grid flex="1 0 auto" paddingLeft={1} paddingRight={1}>
           {mailsLoading && (<>Loading...</>)}
           {mails && mails.map((mail) => (
-            <Paper sx={{ mt: 1, mb: 1, "&:hover": { cursor: "pointer" } }} elevation={3} tabIndex={1} role="button" onKeyUp={(e) => mailKeyUp(e, mail.id)} onClick={(e) => mailClicked(e, mail.id)}>
+            <Paper sx={{ mt: 1, mb: 1, "&:hover": { cursor: "pointer" } }}
+              elevation={hoverKey === mail.id ? 5 : 3}
+              tabIndex={1}
+              role="button"
+              onKeyUp={(e) => mailKeyUp(e, mail.id)}
+              onClick={(e) => mailClicked(e, mail.id)}
+              onMouseEnter={(_e) => setHoverKey(mail.id)}
+              onMouseLeave={(_e) => setHoverKey(null)}
+            >
               <Grid container sx={{ ml: 1 }}>
                 <Grid container size={11} key={mail.id} alignItems='center'>
                   <Grid size={{ xs: 12, md: 4 }} >
@@ -278,8 +288,10 @@ function Mailbox() {
                   </Grid>
                 </Grid>
                 <Grid container size={1} justifyContent='right' alignItems='center'>
-                  <IconButton color="error" aria-label="delete" onKeyUp={(e) => deleteKeyUp(e, mail.id)} onClick={(e) => deleteClicked(e, mail.id)} >
-                    <DeleteIcon />
+                  <IconButton color={hoverKey === mail.id ? "error" : "default"} disabled={hoverKey !== mail.id} aria-label="delete" onKeyUp={(e) => deleteKeyUp(e, mail.id)} onClick={(e) => deleteClicked(e, mail.id)} >
+                    {hoverKey === mail.id ?
+                      <DeleteIcon /> : <DeleteOutlineIcon />
+                    }
                   </IconButton>
                 </Grid>
               </Grid>
