@@ -152,7 +152,7 @@ function Mailbox() {
     getPreviousPageParam: (firstPage) => firstPage.previousId,
     getNextPageParam: (lastPage) => lastPage.nextId,
     // refetchInterval: addressesResponse ? addressesResponse?.refreshInterval * 1000 : false,
-    enabled: selectedAddress !== undefined,
+    enabled: !!selectedAddress,
   });
 
   useEffect(() => {
