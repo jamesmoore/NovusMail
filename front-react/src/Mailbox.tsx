@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AddressContext from './AddressContext';
 import { AppBar, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Divider, Drawer, Fab, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Tooltip, Typography } from '@mui/material';
@@ -72,6 +72,8 @@ function Mailbox() {
 
   const queryClient = useQueryClient();
 
+  const queryKey = useMemo(() => ['mail', selectedAddress], [selectedAddress]);
+
   async function deleteYes() {
     deleteMail(deleteItemKey!)
       .then(() => {
@@ -86,8 +88,7 @@ function Mailbox() {
           } as MailResponse)
           ) ?? [];
 
-        const key = ['mail', selectedAddress];
-        queryClient.setQueryData(key, (data: InfiniteData<MailResponse, number[]>) =>
+        queryClient.setQueryData(queryKey, (data: InfiniteData<MailResponse, number[]>) =>
         (
           {
             pages: newPagesArray,
@@ -143,7 +144,7 @@ function Mailbox() {
     hasNextPage,
     hasPreviousPage,
   } = useInfiniteQuery({
-    queryKey: ['mail', selectedAddress],
+    queryKey: queryKey,
     queryFn: async ({
       pageParam,
     }): Promise<MailResponse> => fetchMails(selectedAddress, pageParam),
