@@ -4,7 +4,7 @@ import AddressContext from './AddressContext';
 import { AppBar, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Divider, Drawer, Fab, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Tooltip, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import ContentCopy from '@mui/icons-material/ContentCopy';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { InfiniteData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchAddress, fetchDomain, fetchMails, deleteMail } from './api-client';
 
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -55,7 +55,6 @@ function Mailbox() {
 
   async function copyClicked() {
     await handleCopy(selectedAddress + domainName);
-
   }
 
   async function onMailItemSelect(itemKey: string) {
@@ -71,11 +70,31 @@ function Mailbox() {
     setDeleteConfirm(true);
   }
 
+  const queryClient = useQueryClient();
+
   async function deleteYes() {
     deleteMail(deleteItemKey!)
       .then(() => {
         setDeleteConfirm(false);
-        refetch();
+
+        const newPagesArray =
+          mails?.pages.map((page) =>
+          ({
+            data: page.data.filter((mail) => mail.id !== deleteItemKey),
+            previousId: page.previousId,
+            nextId: page.nextId
+          } as MailResponse)
+          ) ?? [];
+
+        const key = ['mail', selectedAddress];
+        queryClient.setQueryData(key, (data: InfiniteData<MailResponse, number[]>) =>
+        (
+          {
+            pages: newPagesArray,
+            pageParams: data.pageParams,
+          }
+        )
+        );
       })
       .catch(error => {
         console.error('Failed to delete mail ' + error);
@@ -121,24 +140,18 @@ function Mailbox() {
     isFetchingNextPage,
     isFetchingPreviousPage,
     fetchNextPage,
-    // fetchPreviousPage,
     hasNextPage,
     hasPreviousPage,
-    refetch,
   } = useInfiniteQuery({
     queryKey: ['mail', selectedAddress],
     queryFn: async ({
       pageParam,
-    }): Promise<MailResponse> => {
-      if (!selectedAddress) {
-        return new Promise(() => { });
-      }
-      return fetchMails(selectedAddress, pageParam);
-    },
+    }): Promise<MailResponse> => fetchMails(selectedAddress, pageParam),
     initialPageParam: 1,
     getPreviousPageParam: (firstPage) => firstPage.previousId,
     getNextPageParam: (lastPage) => lastPage.nextId,
     // refetchInterval: addressesResponse ? addressesResponse?.refreshInterval * 1000 : false,
+    enabled: selectedAddress !== undefined,
   });
 
   useEffect(() => {
